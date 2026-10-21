@@ -1,27 +1,45 @@
-# Research Lens API
+# Research Lens Backend
 
-FastAPI backend for document indexing, retrieval-augmented question answering, and ChromaDB/FAISS retrieval experiments. It does not save chat history or use SQLite. Uploaded documents, indexes, document metadata, and experiment records remain in their existing `data/` directories.
+FastAPI service for indexing research documents, retrieving relevant passages, generating grounded answers, and measuring ChromaDB and FAISS retrieval. The React/Vite frontend connects to this API at `http://127.0.0.1:8001` by default.
+
+## Features
+
+- Accepts PDF and UTF-8 TXT uploads.
+- Extracts text, splits it into chunks, and generates embeddings with `sentence-transformers/all-MiniLM-L6-v2`.
+- Stores document vectors in persistent ChromaDB and, when FAISS is installed, also keeps a FAISS index.
+- Retrieves up to five matching passages and their source metadata.
+- Sends retrieved context—not the original complete document—to Groq for question answering.
+- Runs paired ChromaDB/FAISS research experiments with real indexing and retrieval measurements.
+- Stores document metadata and experiment records as JSON files.
+- Does not save chat history and does not use SQLite.
 
 ## Architecture
 
 ```text
-React/Vite frontend
-  -> FastAPI routes
-     -> document service (PDF/TXT extraction and chunking)
-     -> Sentence Transformers (all-MiniLM-L6-v2)
-     -> persistent ChromaDB / optional FAISS
-     -> retrieval service (cosine similarity, top-k 5)
-     -> Groq service (server-side, retrieved context only)
-     -> experiment service (measured runs and JSON records)
+app/main.py
+  ├── routes/         Health, document, question-answering, and experiment endpoints
+  ├── schemas.py      Pydantic request and response models
+  └── services/
+      ├── document_service.py    Upload validation, extraction, chunking, manifest
+      ├── embedding_service.py   Shared Sentence Transformers model
+      ├── vector_store.py        ChromaDB and FAISS indexing and search
+      ├── retrieval_service.py   Query embedding and top-k retrieval
+      ├── groq_service.py        Server-side answer generation
+      └── experiment_service.py  Paired measurements and JSON records
 ```
 
-The frontend uses `http://127.0.0.1:8001` in this workspace because port 8000 is already occupied by another local application. Configure `VITE_API_BASE_URL` in the frontend to match the backend port you run.
+## Requirements
 
-## Requirements and Windows setup
+- Windows 10/11 and PowerShell (commands below are for Windows).
+- Python 3.11 or 3.12 recommended.
+- Dependencies from `requirements.txt`.
+- A Groq API key for live answer generation.
 
-Python 3.11 or newer is recommended. Python 3.11 or 3.12 generally has the broadest package-wheel availability for Windows. FAISS CPU wheels may not be available for every Python/Windows combination; use a supported Python environment and confirm `python -c "import faiss"` before testing FAISS.
+FAISS CPU wheels are not available for every Windows/Python combination. The API can report FAISS experiment failures if FAISS cannot be installed or imported. Upload and ChromaDB functions do not require a Groq key.
 
-In PowerShell:
+## Installation and configuration
+
+Open PowerShell in the backend directory:
 
 ```powershell
 cd C:\Users\Admin\Desktop\ragandvector\backend
@@ -29,61 +47,101 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
 pip install -r requirements.txt
+```
+
+Create the local environment file only if it does not already exist:
+
+```powershell
 if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+```
+
+Edit `backend\.env` and set your Groq key for question answering:
+
+```dotenv
+GROQ_API_KEY=your_groq_api_key
+GROQ_MODEL=openai/gpt-oss-120b
+```
+
+Keep `.env` private. It is ignored by Git. Never put a Groq key in the frontend or commit it to the repository. Do not overwrite an existing `.env` when updating the project.
+
+### Environment variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `GROQ_API_KEY` | Empty | Backend-only key; required for live LLM answers |
+| `GROQ_MODEL` | `openai/gpt-oss-120b` | Groq model name |
+| `EMBEDDING_MODEL` | `sentence-transformers/all-MiniLM-L6-v2` | Embedding model for documents and questions |
+| `CHUNK_SIZE` | `800` | Default document chunk size, in characters |
+| `CHUNK_OVERLAP` | `160` | Default document overlap, in characters |
+| `MAX_UPLOAD_BYTES` | `26214400` | Upload limit in bytes (25 MiB) |
+
+Experiment settings are separately fixed by API validation: chunk sizes 200/400/600/800/1000, 20% overlap, top-k 5, both ChromaDB and FAISS, and the model above.
+
+## Run the backend
+
+From `backend`, run:
+
+```powershell
 .\start_backend.ps1
 ```
 
-The launcher uses the backend's `.venv`, starts Uvicorn on `127.0.0.1:8001`, and stays in the foreground. Keep the terminal open while using the frontend; press `Ctrl+C` to stop the API. If the Research Lens API is already healthy on that port, the script reports that instead of starting a second server. If another process is using the port, it reports the conflict instead of failing with a generic Windows bind error.
+The script starts Uvicorn on `127.0.0.1:8001` and keeps it in the foreground. Leave this terminal open while using the frontend; press `Ctrl+C` to stop the API. If Research Lens is already healthy on port 8001, the launcher reports that instead of starting a duplicate process. If another application owns the port, it reports the conflict.
 
-To use another port, run `.\start_backend.ps1 -Port 8010` and set `VITE_API_BASE_URL=http://127.0.0.1:8010` in `frontend/.env.local`, then restart Vite. The default frontend configuration uses port 8001.
+If PowerShell blocks script execution, start Uvicorn directly:
 
-If activation is blocked, install dependencies with `.\.venv\Scripts\python.exe -m pip install -r requirements.txt`; the launcher can then be run normally.
+```powershell
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8001
+```
 
-Open `http://127.0.0.1:8001/docs` for the interactive API documentation. Health is at `http://127.0.0.1:8001/health`.
+To use a different port:
 
-## Environment
+```powershell
+.\start_backend.ps1 -Port 8010
+```
 
-Set values in `backend/.env`. Keep this file private and out of version control.
+Set `VITE_API_BASE_URL=http://127.0.0.1:8010` in `frontend\.env.local` and restart Vite as well. The frontend and backend ports must match.
 
-| Variable | Default | Purpose |
-|---|---|---|
-| `GROQ_API_KEY` | unset | Backend-only credential, required for LLM answers |
-| `GROQ_MODEL` | `openai/gpt-oss-120b` | Groq model used for generation |
-| `EMBEDDING_MODEL` | `sentence-transformers/all-MiniLM-L6-v2` | Shared document and query embedding model |
-| `CHUNK_SIZE` | `800` | Default document chunk size |
-| `CHUNK_OVERLAP` | `160` | Default document overlap |
-| `MAX_UPLOAD_BYTES` | `26214400` | Maximum upload size |
+### Verify the server
 
-No API key is returned or logged. Experiments and upload/index functions do not need a Groq key.
+- Health check: <http://127.0.0.1:8001/health>
+- Interactive API docs: <http://127.0.0.1:8001/docs>
+- OpenAPI schema: <http://127.0.0.1:8001/openapi.json>
 
-## API endpoints
-
-- `GET /health` — reports API availability and service identity.
-- `POST /api/upload` — accepts a PDF or TXT file as multipart form data, extracts text, creates chunks and embeddings, then indexes the document.
-- `GET /api/documents` — lists indexed documents.
-- `DELETE /api/documents/{document_id}` — removes an indexed document and its stored file.
-- `POST /api/generate` — retrieves up to five chunks and generates an answer using the configured Groq model.
-- `GET /api/experiments` — returns experiment settings and saved experiment records.
-- `POST /api/experiments/run` — runs paired ChromaDB and FAISS measurements for all required chunk sizes.
-- `POST /api/experiments/{experiment_id}/evaluations` — saves manually assigned relevance labels to the experiment JSON record. Each evaluation is scoped to its chunk size, question, and chunk ID so a label does not spill over to a different configuration or question.
-
-Example manual evaluation:
+The health endpoint should return:
 
 ```json
 {
-  "evaluations": [
-    {
-      "chunk_id": "retrieved-chunk-id",
-      "chunk_size": 400,
-      "question": "What is the main finding?",
-      "relevance": "relevant",
-      "context_contains_answer": true
-    }
-  ]
+  "status": "ok",
+  "service": "research-lens-api"
 }
 ```
 
-Example question request:
+CORS allows the development frontend origins `http://localhost:5173` and `http://127.0.0.1:5173`.
+
+## API reference
+
+All request bodies and responses are validated using Pydantic. Error responses use a JSON `detail` field.
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/health` | Check that this API is running |
+| `POST` | `/api/upload` | Upload and index a PDF or TXT document (multipart field: `file`) |
+| `GET` | `/api/documents` | List indexed documents |
+| `DELETE` | `/api/documents/{document_id}` | Delete a document, its file, and its vector indexes |
+| `POST` | `/api/generate` | Retrieve relevant context and generate an answer |
+| `GET` | `/api/experiments` | Get experiment configurations and saved results |
+| `POST` | `/api/experiments/run` | Run the paired chunk-size/vector-store comparison |
+| `POST` | `/api/experiments/{experiment_id}/evaluations` | Save manual relevance labels |
+
+### Upload a document
+
+Use Swagger UI at `/docs` to call `POST /api/upload`; select a PDF or TXT file in the `file` field. The service checks the extension and size, saves the upload, extracts text, builds chunks and embeddings, and completes indexing before returning success. Empty, invalid, unreadable, encrypted, or unsupported files return an error.
+
+On success, the response includes the generated `document_id`, filename, chunk count, size, upload time, and `indexed: true`. Upload limit defaults to 25 MiB.
+
+### Ask a question
+
+`POST /api/generate` request:
 
 ```json
 {
@@ -93,9 +151,11 @@ Example question request:
 }
 ```
 
-`vector_database` accepts `chroma` or `faiss`; top-k is fixed at five. Answers use retrieved context only, return real source metadata, and explain when the available context is insufficient. If Groq is unavailable or unconfigured, the API returns an error rather than a fabricated answer.
+`document_id` is optional; if omitted, retrieval searches all registered documents. `vector_database` accepts `chroma` or `faiss` and defaults to `chroma`. The backend embeds the question using the same model used for document chunks, retrieves at most five passages, and sends only those passages to Groq. A successful response includes the answer, source references, retrieved metadata, and timing breakdown. If Groq is not configured or the provider fails, the API returns an error instead of inventing an answer.
 
-Example experiment request:
+### Compare ChromaDB and FAISS
+
+`POST /api/experiments/run` uses one indexed document and the same evaluation question list for both vector approaches:
 
 ```json
 {
@@ -105,22 +165,82 @@ Example experiment request:
   "top_k": 5,
   "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
   "vector_approaches": ["chroma", "faiss"],
-  "questions": ["What is the main finding?"]
+  "questions": [
+    "What is the main finding?",
+    "Which method did the authors use?"
+  ]
 }
 ```
 
-The same document and questions are used throughout the run. Each chunk-size configuration is embedded once, and the same vectors are sent to both stores. Indexing and retrieval timings are measured; cosine similarity is not a relevance judgment. Researchers add manual relevance labels separately. Failed or incomplete configurations include errors and are not represented as successful measurements. FAISS unavailability is reported per configuration.
+Configuration constraints are validated: all five chunk sizes, 20% overlap, top-k 5, the shared embedding model, and both vector approaches are required. Each chunk size produces one chunk set and embedding matrix; the same vectors are indexed by both databases. Measurements include indexing time, retrieval latency, chunk IDs, returned content, and cosine similarity when available. Failed or incomplete runs include errors and are not marked completed.
+
+`GET /api/experiments` returns the available configuration and saved result records. Manual labels can be saved to `POST /api/experiments/{experiment_id}/evaluations`:
+
+```json
+{
+  "evaluations": [
+    {
+      "chunk_id": "retrieved-chunk-id",
+      "chunk_size": 400,
+      "question": "What is the main finding?",
+      "relevance": "relevant",
+      "context_contains_answer": true,
+      "note": "Optional reviewer note"
+    }
+  ]
+}
+```
+
+`relevance` must be `relevant`, `partially_relevant`, or `not_relevant`. Manual labels are evaluations—not measured metrics—and are scoped to the question, chunk size, and chunk ID. Cosine similarity must not be treated as a human relevance label. If FAISS is unavailable, its affected experiment runs report errors; ChromaDB measurements do not imply FAISS succeeded.
+
+## Data and persistence
+
+Data is stored locally under `backend\data\`:
+
+| Path | Contents |
+|---|---|
+| `uploads\` | Uploaded PDF/TXT files and `documents.json` manifest |
+| `chroma_db\` | Persistent ChromaDB collections |
+| `faiss_index\` | FAISS `.index` files and corresponding JSON chunk metadata |
+| `experiments\` | Saved experiment result JSON files |
+
+Keep these directories when retaining documents, vector indexes, or experiment results. They may contain private research content. Generated data is excluded from Git.
+
+Chat history is not stored. SQLite integration is intentionally not implemented. The existing `data\history.db`, if present, is unused and left untouched.
 
 ## Tests
 
-From `backend` with its virtual environment active:
+Run the test suite from the backend folder:
 
 ```powershell
-python -m pytest -q
+.\.venv\Scripts\python.exe -m pytest -q
 ```
 
-The automated suite uses test doubles for embeddings, vector stores, and Groq, so basic API tests do not require a Groq key or model download. These tests do not substitute for separately exercising live model and vector-index behavior.
+Tests cover health, CORS, document validation and indexing, question validation and response behavior, experiment configuration, and vector retrieval. External Groq calls are mocked; tests do not require a live Groq key. Tests using actual FAISS indexes are skipped if FAISS is unavailable.
 
-## Storage and history
+## Troubleshooting
 
-There is no chat-history route or persistence. New questions and answers are not written to SQLite. The existing `data/history.db` file is intentionally left untouched. Document metadata and experiment records use structured JSON files, and vector stores/upload files remain under `data/`; SQLite integration is not included.
+### `WinError 10048` / address already in use
+
+Port 8001 is occupied. Check <http://127.0.0.1:8001/health>. If it returns the Research Lens service identity, the backend is already running; do not start a second copy. `start_backend.ps1` performs this check. If another program owns the port, select an available port with `.\start_backend.ps1 -Port 8010` and update the frontend's `VITE_API_BASE_URL` to match.
+
+### Frontend cannot connect
+
+1. Start the API with `.\start_backend.ps1` and leave its terminal open.
+2. Check that `/health` returns `research-lens-api`.
+3. Check `frontend\.env.local` contains `VITE_API_BASE_URL=http://127.0.0.1:8001`.
+4. Restart Vite after changing the frontend environment file.
+
+### Groq answer generation fails
+
+Check `GROQ_API_KEY` and `GROQ_MODEL` in `backend\.env`, and restart the API after editing. Never expose the key in frontend code or logs.
+
+### FAISS is unavailable
+
+Verify FAISS from the backend virtual environment:
+
+```powershell
+.\.venv\Scripts\python.exe -c "import faiss; print('FAISS is available')"
+```
+
+If import fails, use a Python version with a compatible `faiss-cpu` wheel or install in a supported environment. The API reports FAISS failures in experiment results; it does not substitute fabricated measurements.
