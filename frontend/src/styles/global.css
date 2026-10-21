@@ -1,0 +1,52 @@
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap");
+
+:root {
+  font-family: "DM Sans", "Segoe UI", sans-serif;
+  color: #17223b;
+  background: #f5f7fb;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  --navy: #17223b;
+  --muted: #73809a;
+  --blue: #4268e8;
+  --blue-dark: #3155d7;
+  --line: #e8ebf2;
+  --panel: #ffffff;
+  --soft-bg: #f8f9fc;
+  --purple: #7956dc;
+  --shadow: 0 5px 20px rgba(27, 42, 79, 0.045);
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; min-height: 100vh; }
+button, input, textarea { font: inherit; }
+button { color: inherit; }
+a { color: inherit; text-decoration: none; }
+button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible {
+  outline: 3px solid rgba(66, 104, 232, .3);
+  outline-offset: 2px;
+}
+::selection { background: #dce5ff; color: #1b2d67; }
+
+.app-shell { min-height: 100vh; }
+.app-main { min-height: 100vh; margin-left: 252px; }
+.main-content { width: min(100%, 1600px); margin: 0 auto; padding: 31px 40px 52px; }
+.page-stack { display: flex; flex-direction: column; gap: 24px; }
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+
+@media (max-width: 1080px) {
+  .app-main { margin-left: 220px; }
+  .main-content { padding: 28px 28px 44px; }
+}
+@media (max-width: 760px) {
+  .app-main { margin-left: 0; }
+  .main-content { padding: 22px 18px 36px; }
+}
+@media (max-width: 480px) {
+  .main-content { padding: 19px 13px 30px; }
+  .page-stack { gap: 17px; }
+}
